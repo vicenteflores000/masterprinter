@@ -63,7 +63,13 @@ class SnmpDiscoveryService
         );
 
         // 4️⃣ Detectar marca / modelo (simple por ahora)
-        [$brand, $model] = $this->detectBrandAndModel($sysDescr, $sysObjectId);
+        $hrModel = $this->getHrDeviceModel(
+            $printer->ip,
+            $config->community,
+            $config->version
+        );
+
+        [$brand, $model] = $this->detectBrandAndModel($sysDescr, $sysObjectId, $hrModel);
 
         $profile = app(MonitoringProfileResolver::class)->resolveFromBrand($brand);
 
@@ -92,31 +98,31 @@ class SnmpDiscoveryService
     /**
      * Detección básica, se refina después
      */
-    protected function detectBrandAndModel(string $sysDescr, ?string $sysObjectId): array
+    protected function detectBrandAndModel(string $sysDescr, ?string $sysObjectId, ?string $modelOverride = null): array
     {
         if ($sysObjectId && str_contains($sysObjectId, 'enterprises.641')) {
-            return ['lexmark', $this->extractLexmarkModel($sysDescr)];
+            return ['lexmark', $modelOverride ?? $this->extractLexmarkModel($sysDescr)];
         }
 
         if ($sysObjectId && str_contains($sysObjectId, 'enterprises.236')) {
-            return ['samsung', $this->extractModel($sysDescr)];
+            return ['samsung', $modelOverride ?? $this->extractModel($sysDescr)];
         }
 
         $normalized = strtolower($sysDescr);
 
         if (str_contains($normalized, 'hp')) {
-            return ['hp', $this->extractModel($sysDescr)];
+            return ['hp', $modelOverride ?? $this->extractModel($sysDescr)];
         }
 
         if (str_contains($normalized, 'brother')) {
-            return ['brother', $this->extractModel($sysDescr)];
+            return ['brother', $modelOverride ?? $this->extractModel($sysDescr)];
         }
 
         if (str_contains($normalized, 'samsung')) {
-            return ['samsung', $this->extractModel($sysDescr)];
+            return ['samsung', $modelOverride ?? $this->extractModel($sysDescr)];
         }
 
-        return ['unknown', null];
+        return ['unknown', $modelOverride];
     }
 
     protected function extractLexmarkModel(string $sysDescr): ?string
@@ -140,6 +146,22 @@ class SnmpDiscoveryService
         $raw = $this->client->get(
             $ip,
             '1.3.6.1.2.1.43.5.1.1.17.1',
+            $community,
+            $version
+        );
+
+        if (! $raw) {
+            return null;
+        }
+
+        return $this->extractSnmpString($raw);
+    }
+
+    protected function getHrDeviceModel(string $ip, string $community, string $version): ?string
+    {
+        $raw = $this->client->get(
+            $ip,
+            '1.3.6.1.2.1.25.3.2.1.3.1',
             $community,
             $version
         );
